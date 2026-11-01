@@ -1,0 +1,6 @@
+{
+  "name": "TinyDrive 3D - Motion-Controlled Kids Adventure",
+  "description": "A cheerful, zero-frustration 3D procedural driving and flying adventure for kids controlled in real-time by tilting your mobile phone via WebRTC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
