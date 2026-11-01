@@ -38,6 +38,8 @@ export interface CalibrationSettings {
   sensitivity: number; // multiplier, e.g. 1.0
   maxTilt: number; // degrees for max steering, e.g. 45
   orientationMode: 'face-up' | 'face-down';
+  steeringMode: 'yaw' | 'tilt'; // 'yaw' for flat toy car rotation on floor, 'tilt' for traditional tilting
+  yawMode?: 'relative' | 'delta'; // 'relative' heading from zero or 'delta' rate of turn
 }
 
 export interface MotionDataPayload {

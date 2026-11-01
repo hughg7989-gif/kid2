@@ -647,8 +647,8 @@ export const HostGame: React.FC<HostGameProps> = ({
         soundSynth.updateEngine(currentSpeedMultRef.current, effectiveSpeed > 0.5);
 
         // Steering (Turns left/right)
-        const turnRate = 2.2 * (vDef.type === 'air' ? 1.6 : 1.2);
-        vehicleHeadingRef.current -= steerInput * turnRate * delta;
+        const turnRate = 2.4 * (vDef.type === 'air' ? 1.6 : 1.2);
+        vehicleHeadingRef.current += steerInput * turnRate * delta;
 
         // Forward Velocity Direction Vector (front of car is +Z)
         const forwardX = Math.sin(vehicleHeadingRef.current);

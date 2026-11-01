@@ -377,8 +377,103 @@ export const HELICOPTER_CODE = `export default {
   }
 };`;
 
+export const TODDLER_TRAIN_CODE = `export default {
+  id: "toddler_train",
+  name: "Toddler Train",
+  type: "ground",
+  baseSpeed: 9,
+  boostMultiplier: 1.4,
+  slowMultiplier: 0.4,
+  jumpForce: 10,
+  dimensions: { length: 3.2, width: 1.8, height: 2.8 },
+
+  sounds: {
+    horn: "choo_choo",
+    enginePitch: 0.9
+  },
+
+  geometry: function(THREE) {
+    const group = new THREE.Group();
+
+    // Materials
+    const redMat = new THREE.MeshStandardMaterial({ color: 0xff3b30, roughness: 0.3 });
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3 });
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x007aff, roughness: 0.3 });
+    const blackMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.5 });
+    const greyMat = new THREE.MeshStandardMaterial({ color: 0x8e8e93, roughness: 0.4 });
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+
+    // Engine Boiler (Main Body along Z-axis)
+    const boilerGeo = new THREE.CylinderGeometry(0.8, 0.8, 2.5, 16);
+    boilerGeo.rotateX(Math.PI / 2);
+    const boiler = new THREE.Mesh(boilerGeo, redMat);
+    boiler.position.set(0, 1.0, 0);
+    group.add(boiler);
+
+    // Engineer Cabin (at Rear -Z)
+    const cabinGeo = new THREE.BoxGeometry(1.6, 1.8, 1.6);
+    const cabin = new THREE.Mesh(cabinGeo, yellowMat);
+    cabin.position.set(0, 1.4, -1.2);
+    group.add(cabin);
+
+    // Cabin Roof
+    const roofGeo = new THREE.BoxGeometry(1.8, 0.3, 1.8);
+    const roof = new THREE.Mesh(roofGeo, blueMat);
+    roof.position.set(0, 2.4, -1.2);
+    group.add(roof);
+
+    // Smokestack (towards Front +Z)
+    const stackGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.2, 12);
+    const stack = new THREE.Mesh(stackGeo, blackMat);
+    stack.position.set(0, 2.0, 1.0);
+    group.add(stack);
+
+    // Smoke Puff
+    const smokeGeo = new THREE.SphereGeometry(0.4, 12, 12);
+    const smoke = new THREE.Mesh(smokeGeo, whiteMat);
+    smoke.position.set(0, 2.8, 1.0);
+    group.add(smoke);
+
+    // Cowcatcher (Front wedge at +Z)
+    const catcherGeo = new THREE.ConeGeometry(0.9, 1.2, 4);
+    catcherGeo.rotateX(-Math.PI / 2);
+    const catcher = new THREE.Mesh(catcherGeo, greyMat);
+    catcher.position.set(0, 0.7, 1.6);
+    group.add(catcher);
+
+    // Wheels (3 pairs along length, spaced at X = ±0.9)
+    const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+
+    const wheelPositions = [
+      { z: 1.0, x: 0.9 },
+      { z: 1.0, x: -0.9 },
+      { z: -0.2, x: 0.9 },
+      { z: -0.2, x: -0.9 },
+      { z: -1.4, x: 0.9 },
+      { z: -1.4, x: -0.9 }
+    ];
+
+    wheelPositions.forEach(pos => {
+      const wheel = new THREE.Mesh(wheelGeo, blackMat);
+      wheel.position.set(pos.x, 0.5, pos.z);
+      group.add(wheel);
+
+      // Yellow Hubcap
+      const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.35, 12);
+      hubGeo.rotateZ(Math.PI / 2);
+      const hub = new THREE.Mesh(hubGeo, yellowMat);
+      hub.position.set(pos.x, 0.5, pos.z);
+      group.add(hub);
+    });
+
+    return group;
+  }
+};`;
+
 export const PRESET_VEHICLES = [
   { id: 'default_car', code: RED_CAR_CODE, label: 'Red Race Car' },
+  { id: 'toddler_train', code: TODDLER_TRAIN_CODE, label: 'Toddler Train' },
   { id: 'yellow_excavator', code: EXCAVATOR_CODE, label: 'Construction Digger' },
   { id: 'sky_jet', code: BLUE_JET_CODE, label: 'Sky Cruiser Jet' },
   { id: 'ice_cream_van', code: ICE_CREAM_TRUCK_CODE, label: 'Sweet Treat Van' },

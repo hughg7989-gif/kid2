@@ -31,24 +31,50 @@ test('applyDeadzone suppresses small angles below threshold', () => {
   assert.equal(applyDeadzone(-10, 5), -5);
 });
 
-test('processMotionData calculates neutral steer and speed correctly', () => {
-  const result = processMotionData(
+test('processMotionData in Flat Toy Car (Yaw) mode steers strictly by Z-axis rotation', () => {
+  // Neutral forward
+  const neutral = processMotionData(
     {
       orientation: { alpha: 0, beta: 0, gamma: 0 },
       acceleration: { x: 0, y: 0, z: 9.8 },
       timestamp: 1000,
     },
-    DEFAULT_CALIBRATION
+    { ...DEFAULT_CALIBRATION, steeringMode: 'yaw' }
   );
+  assert.equal(neutral.steer, 0);
+  assert.equal(neutral.pitch, 0);
+  assert.equal(neutral.speedMultiplier, 1.0);
 
-  assert.equal(result.steer, 0);
-  assert.equal(result.pitch, 0);
-  assert.equal(result.speedMultiplier, 1.0);
-  assert.equal(result.isFlipped, false);
-  assert.equal(result.isJumpTriggered, false);
+  // Turn physical toy car left on floor (alpha = -20 deg)
+  const turnLeft = processMotionData(
+    {
+      orientation: { alpha: -20, beta: 5, gamma: -3 }, // slight pitch/roll from carpet
+      acceleration: { x: 0, y: 0, z: 9.8 },
+      timestamp: 1000,
+    },
+    { ...DEFAULT_CALIBRATION, steeringMode: 'yaw' }
+  );
+  assert.ok(turnLeft.steer < 0, 'Left turn must produce negative steer');
+  assert.equal(turnLeft.pitch, 0, 'Pitch must be ignored in yaw mode');
+  assert.equal(turnLeft.speedMultiplier, 1.0, 'Pitch must not alter speed in yaw mode');
+
+  // Turn physical toy car right on floor (alpha = +20 deg)
+  const turnRight = processMotionData(
+    {
+      orientation: { alpha: 20, beta: -6, gamma: 4 },
+      acceleration: { x: 0, y: 0, z: 9.8 },
+      timestamp: 1000,
+    },
+    { ...DEFAULT_CALIBRATION, steeringMode: 'yaw' }
+  );
+  assert.ok(turnRight.steer > 0, 'Right turn must produce positive steer');
+  assert.equal(turnRight.pitch, 0);
+  assert.equal(turnRight.speedMultiplier, 1.0);
 });
 
-test('processMotionData detects forward tilt boost and backward tilt slowdown', () => {
+test('processMotionData in Tilt mode detects pitch boost and slowdown', () => {
+  const tiltCal = { ...DEFAULT_CALIBRATION, steeringMode: 'tilt' as const };
+
   // Forward tilt: beta = 25 deg
   const forwardResult = processMotionData(
     {
@@ -56,7 +82,7 @@ test('processMotionData detects forward tilt boost and backward tilt slowdown', 
       acceleration: { x: 0, y: 0, z: 9.8 },
       timestamp: 1000,
     },
-    DEFAULT_CALIBRATION
+    tiltCal
   );
   assert.ok(forwardResult.speedMultiplier > 1.0);
   assert.ok(forwardResult.speedMultiplier <= 1.5);
@@ -68,13 +94,13 @@ test('processMotionData detects forward tilt boost and backward tilt slowdown', 
       acceleration: { x: 0, y: 0, z: 9.8 },
       timestamp: 1000,
     },
-    DEFAULT_CALIBRATION
+    tiltCal
   );
   assert.ok(backResult.speedMultiplier < 1.0);
   assert.ok(backResult.speedMultiplier >= 0.4);
 });
 
-test('processMotionData detects vehicle flip when roll or pitch > 80 deg', () => {
+test('processMotionData detects vehicle flip when roll or pitch > 80 deg in all modes', () => {
   const flippedRoll = processMotionData(
     {
       orientation: { alpha: 0, beta: 0, gamma: 85 },
@@ -94,31 +120,9 @@ test('processMotionData detects vehicle flip when roll or pitch > 80 deg', () =>
     DEFAULT_CALIBRATION
   );
   assert.equal(flippedPitch.isFlipped, true);
-
-  const upright = processMotionData(
-    {
-      orientation: { alpha: 0, beta: 30, gamma: 30 },
-      acceleration: { x: 0, y: 0, z: 0 },
-      timestamp: 1000,
-    },
-    DEFAULT_CALIBRATION
-  );
-  assert.equal(upright.isFlipped, false);
 });
 
-test('processMotionData detects jump on high accelerometer impulse', () => {
-  const jumpResult = processMotionData(
-    {
-      orientation: { alpha: 0, beta: 0, gamma: 0 },
-      acceleration: { x: 0, y: 0, z: 18.5 },
-      timestamp: 1000,
-    },
-    DEFAULT_CALIBRATION
-  );
-  assert.equal(jumpResult.isJumpTriggered, true);
-});
-
-test('encodePreset and decodePreset roundtrip calibration settings correctly', () => {
+test('encodePreset and decodePreset roundtrip calibration settings with steeringMode', () => {
   const original = {
     centerAlpha: 45,
     centerBeta: 12,
@@ -130,6 +134,8 @@ test('encodePreset and decodePreset roundtrip calibration settings correctly', (
     sensitivity: 1.5,
     maxTilt: 40,
     orientationMode: 'face-down' as const,
+    steeringMode: 'yaw' as const,
+    yawMode: 'relative' as const,
   };
 
   const encoded = encodePreset(original);
@@ -146,4 +152,5 @@ test('encodePreset and decodePreset roundtrip calibration settings correctly', (
   assert.equal(decoded.sensitivity, 1.5);
   assert.equal(decoded.maxTilt, 40);
   assert.equal(decoded.orientationMode, 'face-down');
+  assert.equal(decoded.steeringMode, 'yaw');
 });

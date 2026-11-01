@@ -10,20 +10,35 @@ import { PRESET_VEHICLES, RED_CAR_CODE } from './presets';
 export const AI_SYSTEM_PROMPT = `You are an expert Three.js 3D vehicle generator for a modular toddler driving game. 
 Generate a complete, fully valid JavaScript ES Module file according to the specifications below.
 
-RULES:
+CRITICAL ORIENTATION & COORDINATE RULES:
+1. Coordinate Axes:
+   - +Z is FORWARD (Front of vehicle: headlights, front bumper, hood, propeller, train cowcatcher).
+   - -Z is REAR / BACK (Back of vehicle: cabin, exhaust, tail lights, spoiler).
+   - +X is RIGHT SIDE, -X is LEFT SIDE (Wheels and doors placed at left/right ±X, e.g. x = ±0.65).
+   - +Y is UP (Ground is at y = 0, wheel centers at y ≈ 0.35, vehicle body at y ≈ 0.5 - 1.2).
+   CRITICAL: DO NOT orient the vehicle along the X axis. The vehicle MUST face +Z.
+
+REQUIRED CODE STRUCTURE:
 1. Return strictly valid JavaScript ES module code starting with \`export default {\`. Do not wrap code in markdown tags if saving directly.
-2. Use baseline reference speed \`baseSpeed: 10\` for normal ground vehicles. Adjust proportionally for high-speed jets (e.g., 18) or heavy excavators (e.g., 6).
-3. \`type\` must be either "ground" or "air".
-4. Build the vehicle visual representation strictly inside the \`geometry(THREE)\` function using THREE primitives (BoxGeometry, CylinderGeometry, SphereGeometry, ConeGeometry, ExtrudeGeometry, etc.).
-5. Apply bright, toddler-friendly, high-contrast colors and materials.
-6. Return a unified \`THREE.Group()\` object containing all components.
+2. MUST include:
+   - id: "unique_snake_case_id" (e.g., "toddler_train", "red_car") [REQUIRED]
+   - name: "Human Friendly Name" (e.g., "Toddler Train") [REQUIRED]
+   - type: "ground" or "air" [REQUIRED]
+   - baseSpeed: 10 (use 8 for heavy trains/diggers, 10 for cars, 16 for jets)
+   - boostMultiplier: 1.5
+   - slowMultiplier: 0.4
+   - jumpForce: 12
+3. Build the vehicle visual representation strictly inside the \`geometry(THREE)\` function using standard THREE primitives (BoxGeometry, CylinderGeometry, SphereGeometry, ConeGeometry).
+4. Apply bright, toddler-friendly, high-contrast colors and materials (MeshStandardMaterial with roughness ~0.3).
+5. Return a unified \`THREE.Group()\` object containing all components.
 
 USER REQUEST:
-[INSERT USER TEXT DESCRIPTION HERE OR ATTACH IMAGE ANALYSIS DETAILS, e.g., "Yellow construction excavator with big tread wheels and bucket arm"]`;
+[INSERT USER TEXT DESCRIPTION HERE, e.g., "Toddler steam train with red boiler, yellow cabin, black wheels, and front cowcatcher"]`;
 
 /**
  * Loads a vehicle definition from raw ES module JavaScript code string
  * using Dynamic Blob URL import.
+ * Automatically recovers from missing 'id' and sideways X-axis orientation!
  */
 export async function loadVehicleFromCode(code: string): Promise<VehicleDefinition> {
   const cleanCode = code
@@ -41,9 +56,15 @@ export async function loadVehicleFromCode(code: string): Promise<VehicleDefiniti
     if (!vehicle || typeof vehicle !== 'object') {
       throw new Error('Module must default-export an object.');
     }
+
+    // Auto-generate missing ID from name so it never crashes on missing id
     if (!vehicle.id || typeof vehicle.id !== 'string') {
-      throw new Error('Vehicle must have an "id" string.');
+      const generated = vehicle.name && typeof vehicle.name === 'string'
+        ? vehicle.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+        : 'custom_vehicle';
+      vehicle.id = generated || 'custom_vehicle';
     }
+
     if (!vehicle.name || typeof vehicle.name !== 'string') {
       vehicle.name = 'Custom Vehicle';
     }
@@ -67,9 +88,29 @@ export async function loadVehicleFromCode(code: string): Promise<VehicleDefiniti
     }
 
     // Test geometry creation with Three.js to verify it renders without crashing
-    const testMesh = vehicle.geometry(THREE);
-    if (!testMesh || !testMesh.isObject3D) {
+    const rawMesh = vehicle.geometry(THREE);
+    if (!rawMesh || !rawMesh.isObject3D) {
       throw new Error('geometry(THREE) must return a valid Three.js Object3D / Group.');
+    }
+
+    // Detect if the model was accidentally built along X axis instead of Z
+    // (e.g. if length along X is > 1.25x width along Z)
+    const bbox = new THREE.Box3().setFromObject(rawMesh);
+    const sizeX = bbox.max.x - bbox.min.x;
+    const sizeZ = bbox.max.z - bbox.min.z;
+    const isSidewaysAlongX = sizeX > sizeZ * 1.25;
+
+    if (isSidewaysAlongX) {
+      // Auto-wrap the geometry function with a 90-degree yaw rotation
+      // so +X (front cowcatcher/hood) rotates cleanly into +Z (forward)!
+      const originalGeometryFn = vehicle.geometry;
+      vehicle.geometry = function(threeInstance: typeof THREE) {
+        const root = originalGeometryFn(threeInstance);
+        const wrapper = new threeInstance.Group();
+        root.rotation.y = -Math.PI / 2;
+        wrapper.add(root);
+        return wrapper;
+      };
     }
 
     return vehicle as VehicleDefinition;

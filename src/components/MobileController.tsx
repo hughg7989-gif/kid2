@@ -145,13 +145,16 @@ export const MobileController: React.FC<MobileControllerProps> = ({
   // Motion event listeners
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
-        setCurrentOrientation({
-          alpha: e.alpha,
-          beta: e.beta,
-          gamma: e.gamma,
-        });
-      }
+      // Support both standard alpha and iOS webkitCompassHeading
+      const rawAlpha = typeof (e as unknown as { webkitCompassHeading?: number }).webkitCompassHeading === 'number'
+        ? (360 - (e as unknown as { webkitCompassHeading: number }).webkitCompassHeading)
+        : (e.alpha ?? 0);
+
+      setCurrentOrientation({
+        alpha: rawAlpha,
+        beta: e.beta ?? 0,
+        gamma: e.gamma ?? 0,
+      });
     };
 
     const handleMotion = (e: DeviceMotionEvent) => {
@@ -242,14 +245,28 @@ export const MobileController: React.FC<MobileControllerProps> = ({
     const nx = Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2)));
     const ny = Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2)));
 
-    setCurrentOrientation({
-      alpha: 0,
-      beta: -ny * 40,  // pitch
-      gamma: nx * 40,   // roll
-    });
+    if (calibration.steeringMode === 'yaw') {
+      // In Yaw mode, horizontal dragging simulates turning the toy car flat on the floor
+      setCurrentOrientation((prev) => ({
+        ...prev,
+        alpha: normalizeAngleDeg(calibration.centerAlpha + nx * calibration.maxTilt),
+        beta: 0,
+        gamma: 0,
+      }));
+    } else {
+      setCurrentOrientation({
+        alpha: 0,
+        beta: -ny * 40,  // pitch
+        gamma: nx * 40,   // roll
+      });
+    }
   };
 
   // Effective tilt angles for on-screen feedback
+  let effYaw = normalizeAngleDeg(currentOrientation.alpha - calibration.centerAlpha);
+  if (calibration.orientationMode === 'face-down') effYaw = -effYaw;
+  if (calibration.invertYaw) effYaw = -effYaw;
+
   const effRoll = normalizeAngleDeg(currentOrientation.gamma - calibration.centerGamma);
   const effPitch = normalizeAngleDeg(currentOrientation.beta - calibration.centerBeta);
 
@@ -316,23 +333,89 @@ export const MobileController: React.FC<MobileControllerProps> = ({
 
       {/* Main Interactive Play Area */}
       <div className="flex-1 flex flex-col justify-between p-4 relative overflow-hidden">
-        {/* Live Visual 3D Phone Tilt Visualizer */}
-        <div className="flex flex-col items-center justify-center py-2 shrink-0">
-          <div className="relative w-36 h-24 rounded-2xl border-2 border-amber-400/40 bg-slate-900/80 shadow-xl flex items-center justify-center p-2 perspective-500">
-            {/* Tilted phone graphic representation */}
-            <div
-              className="w-20 h-12 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 border-2 border-white shadow-lg flex items-center justify-center text-slate-950 font-black text-[10px] transition-transform duration-75"
-              style={{
-                transform: `rotate(${effRoll}deg) rotateX(${effPitch * 0.7}deg)`,
-              }}
-            >
-              <Smartphone className="w-4 h-4 mr-1" />
-              STEER
-            </div>
+        {/* Steering Mode Selector Badge */}
+        <div className="flex items-center justify-center gap-1.5 shrink-0 mb-1">
+          <button
+            onClick={() => setCalibration({ ...calibration, steeringMode: 'yaw' })}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition border ${
+              calibration.steeringMode === 'yaw'
+                ? 'bg-amber-400 text-slate-950 border-white shadow-md'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+            }`}
+          >
+            <span>🏎️ Flat Toy Car (Yaw / Heading)</span>
+          </button>
+          <button
+            onClick={() => setCalibration({ ...calibration, steeringMode: 'tilt' })}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition border ${
+              calibration.steeringMode === 'tilt'
+                ? 'bg-amber-400 text-slate-950 border-white shadow-md'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+            }`}
+          >
+            <span>📱 Tilt Steering</span>
+          </button>
+        </div>
+
+        {/* Live Visual 3D Phone / Flat Toy Car Orientation Visualizer */}
+        <div className="flex flex-col items-center justify-center py-1 shrink-0">
+          <div className="relative w-40 h-28 rounded-3xl border-2 border-amber-400/40 bg-slate-900/90 shadow-2xl flex items-center justify-center p-2 perspective-500 overflow-hidden">
+            {calibration.steeringMode === 'yaw' ? (
+              // Flat Top-Down Toy Car Horizontal Turntable Visualizer
+              <div
+                className="relative w-24 h-16 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 border-3 border-white shadow-xl flex items-center justify-between px-2 text-slate-950 font-black text-[11px] transition-transform duration-75"
+                style={{
+                  transform: `rotate(${effYaw}deg)`,
+                }}
+              >
+                {/* Left/Right turn arrows on car body */}
+                <span className="text-[10px] opacity-70">L</span>
+                <div className="flex flex-col items-center">
+                  <div className="w-2.5 h-1.5 rounded-t bg-slate-950 mb-0.5" />
+                  <span className="leading-none text-[9px] uppercase tracking-wider">CAR</span>
+                </div>
+                <span className="text-[10px] opacity-70">R</span>
+
+                {/* Front nose indicator */}
+                <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-amber-200 rounded-t-sm border border-slate-950" />
+              </div>
+            ) : (
+              // Traditional 3D Tilted Phone Visualizer
+              <div
+                className="w-20 h-12 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 border-2 border-white shadow-lg flex items-center justify-center text-slate-950 font-black text-[10px] transition-transform duration-75"
+                style={{
+                  transform: `rotate(${effRoll}deg) rotateX(${effPitch * 0.7}deg)`,
+                }}
+              >
+                <Smartphone className="w-4 h-4 mr-1" />
+                STEER
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400 mt-2">
-            <span>Roll: <strong className="text-amber-300">{Math.round(effRoll)}°</strong></span>
-            <span>Pitch: <strong className="text-sky-300">{Math.round(effPitch)}°</strong></span>
+
+          {/* Real-time Angle Readouts */}
+          <div className="flex flex-col items-center text-center mt-1.5">
+            {calibration.steeringMode === 'yaw' ? (
+              <>
+                <div className="text-xs font-black tracking-wide">
+                  {Math.abs(effYaw) <= calibration.deadzone ? (
+                    <span className="text-emerald-400">Heading Straight (0°)</span>
+                  ) : effYaw < 0 ? (
+                    <span className="text-sky-300">Turning Left ({Math.round(effYaw)}°) ⬅️</span>
+                  ) : (
+                    <span className="text-amber-300">Turning Right (+{Math.round(effYaw)}°) ➡️</span>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5">
+                  Rotating horizontally on floor • Pitch & Roll ignored
+                </span>
+              </>
+            ) : (
+              <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400">
+                <span>Roll: <strong className="text-amber-300">{Math.round(effRoll)}°</strong></span>
+                <span>Pitch: <strong className="text-sky-300">{Math.round(effPitch)}°</strong></span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -349,14 +432,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({
           onPointerUp={() => {
             isTouchDragging.current = false;
           }}
-          className="mx-auto w-full max-w-xs h-28 rounded-3xl border-2 border-dashed border-slate-700 bg-slate-900/60 flex flex-col items-center justify-center text-center p-2 touch-none cursor-grab active:cursor-grabbing"
+          className="mx-auto w-full max-w-xs h-24 rounded-3xl border-2 border-dashed border-slate-700 bg-slate-900/60 flex flex-col items-center justify-center text-center p-2 touch-none cursor-grab active:cursor-grabbing"
         >
-          <Compass className="w-5 h-5 text-slate-500 mb-1" />
-          <span className="text-xs font-bold text-slate-300">
-            Tilt Phone to Steer
+          <Compass className="w-5 h-5 text-amber-400 mb-1" />
+          <span className="text-xs font-bold text-slate-200">
+            {calibration.steeringMode === 'yaw'
+              ? 'Rotate Toy Car on Floor to Steer'
+              : 'Tilt Phone to Steer'}
           </span>
           <span className="text-[10px] text-slate-500">
-            or drag your thumb here to steer manually
+            {calibration.steeringMode === 'yaw'
+              ? 'or slide finger left/right here to simulate flat rotation'
+              : 'or drag your thumb here to steer manually'}
           </span>
         </div>
 
@@ -371,13 +458,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({
             onPointerUp={() => setIsHornActive(false)}
             onPointerLeave={() => setIsHornActive(false)}
             aria-label="Horn Beep"
-            className={`h-24 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
+            className={`h-22 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
               isHornActive
                 ? 'bg-amber-400 border-white text-slate-950 scale-95'
                 : 'bg-amber-500/20 border-amber-400/60 text-amber-300 hover:bg-amber-500/30'
             }`}
           >
-            <Volume2 className="w-7 h-7" />
+            <Volume2 className="w-6 h-6" />
             <span>Honk!</span>
           </button>
 
@@ -390,13 +477,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({
             onPointerUp={() => setIsJumpActive(false)}
             onPointerLeave={() => setIsJumpActive(false)}
             aria-label="Jump Action"
-            className={`h-24 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
+            className={`h-22 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
               isJumpActive
                 ? 'bg-emerald-400 border-white text-slate-950 scale-95'
                 : 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 hover:bg-emerald-500/30'
             }`}
           >
-            <ArrowUpCircle className="w-7 h-7" />
+            <ArrowUpCircle className="w-6 h-6" />
             <span>Jump!</span>
           </button>
 
@@ -406,13 +493,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({
             onPointerUp={() => setIsBoostActive(false)}
             onPointerLeave={() => setIsBoostActive(false)}
             aria-label="Turbo Boost"
-            className={`h-24 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
+            className={`h-22 rounded-3xl flex flex-col items-center justify-center gap-1 border-3 font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-lg ${
               isBoostActive
                 ? 'bg-rose-500 border-white text-white scale-95'
                 : 'bg-rose-500/20 border-rose-400/60 text-rose-300 hover:bg-rose-500/30'
             }`}
           >
-            <Flame className="w-7 h-7" />
+            <Flame className="w-6 h-6" />
             <span>Boost!</span>
           </button>
         </div>
@@ -422,10 +509,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({
           <button
             onClick={handleSetZero}
             aria-label="Set Center Zero Orientation"
-            className="w-full py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-98 border border-slate-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition"
+            className="w-full py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-98 border-2 border-white text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Calibrate Zero (Hold Phone Flat & Tap)</span>
+            <span>
+              {calibration.steeringMode === 'yaw'
+                ? 'Set Straight Ahead (Point Toy Car Forward & Tap)'
+                : 'Calibrate Zero (Hold Flat & Tap)'}
+            </span>
           </button>
         </div>
       </div>
@@ -446,10 +537,39 @@ export const MobileController: React.FC<MobileControllerProps> = ({
             </button>
           </div>
 
+          {/* Steering Mode Toggle */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 mb-1">
+              Active Steering Mode
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setCalibration({ ...calibration, steeringMode: 'yaw' })}
+                className={`py-2 px-3 rounded-xl font-bold border transition ${
+                  calibration.steeringMode === 'yaw'
+                    ? 'bg-amber-500 text-slate-950 border-white'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+              >
+                Flat Toy Car (Yaw / Heading)
+              </button>
+              <button
+                onClick={() => setCalibration({ ...calibration, steeringMode: 'tilt' })}
+                className={`py-2 px-3 rounded-xl font-bold border transition ${
+                  calibration.steeringMode === 'tilt'
+                    ? 'bg-amber-500 text-slate-950 border-white'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+              >
+                Tilt Steering (Roll / Pitch)
+              </button>
+            </div>
+          </div>
+
           {/* Orientation Mode Toggle */}
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-1">
-              Orientation Placement Mode
+              Phone Placement on Toy Car
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button

@@ -16,6 +16,7 @@ import {
   FileCode,
   Sparkles,
   Download,
+  RotateCw,
 } from 'lucide-react';
 import { VehicleDefinition } from '../types/game';
 import { PRESET_VEHICLES } from '../vehicles/presets';
@@ -159,7 +160,7 @@ export const VehicleModal: React.FC<VehicleModalProps> = ({
             <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">
               Choose Built-in Vehicle Preset
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
               {PRESET_VEHICLES.map((p) => {
                 const isSelected = selectedPresetId === p.id;
                 const isAir = p.code.includes('"air"');
@@ -167,7 +168,7 @@ export const VehicleModal: React.FC<VehicleModalProps> = ({
                   <button
                     key={p.id}
                     onClick={() => handleSelectPreset(p.id)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 text-center transition font-bold ${
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-2xl border-2 text-center transition font-bold ${
                       isSelected
                         ? 'border-sky-500 bg-sky-50 text-sky-900 shadow-sm'
                         : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
@@ -180,7 +181,7 @@ export const VehicleModal: React.FC<VehicleModalProps> = ({
                         <Car className="w-4 h-4 text-amber-600" />
                       )}
                     </div>
-                    <span className="leading-tight text-[11px]">{p.label}</span>
+                    <span className="leading-tight text-[11px] truncate max-w-[85px]">{p.label}</span>
                   </button>
                 );
               })}
@@ -243,12 +244,34 @@ export const VehicleModal: React.FC<VehicleModalProps> = ({
                 <FileCode className="w-3.5 h-3.5 text-sky-600" />
                 JavaScript Module Code (ES Module)
               </label>
-              <button
-                onClick={handleDownloadFile}
-                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700"
-              >
-                <Download className="w-3 h-3" /> Save as .js
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    // Inject or toggle 90-degree yaw rotation in code
+                    setCode((prev) => {
+                      if (prev.includes('group.rotation.y = -Math.PI / 2;')) {
+                        return prev.replace(/ *group\.rotation\.y = -Math\.PI \/ 2;\n?/, '');
+                      } else if (prev.includes('const group = new THREE.Group();')) {
+                        return prev.replace(
+                          'const group = new THREE.Group();',
+                          'const group = new THREE.Group();\n    group.rotation.y = -Math.PI / 2;'
+                        );
+                      }
+                      return prev;
+                    });
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-sky-600 hover:text-sky-700"
+                  title="Rotate model 90 degrees around vertical axis if generated sideways along X axis"
+                >
+                  <RotateCw className="w-3 h-3" /> Rotate 90° (Fix Sideways)
+                </button>
+                <button
+                  onClick={handleDownloadFile}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700"
+                >
+                  <Download className="w-3 h-3" /> Save as .js
+                </button>
+              </div>
             </div>
             <textarea
               value={code}
